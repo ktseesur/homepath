@@ -1,6 +1,8 @@
 library(shiny)
 library(bslib)
 library(ggplot2)
+library(curl)       # to ask the Solana network for a wallet balance (already installed with rsconnect)
+library(jsonlite)   # to read the answer (comes with shiny)
 source("functions.R")
 params <- readRDS("data/mu_sigma.rds")
 
@@ -81,7 +83,7 @@ h1, h2, h3, h4, .serif { font-family: Georgia, 'Times New Roman', serif; }
 }
 
 /* unlucky / typical / lucky tiles */
-.stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+.stat-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
 .stat { border: 1px solid var(--hp-line); border-radius: 14px; padding: 0.75rem; text-align: center; background: #FFFFFF; }
 .stat-label { font-size: 0.75rem; color: var(--hp-muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .stat-value { font-family: Georgia, 'Times New Roman', serif; font-size: 1.4rem; font-weight: 700; }
@@ -129,12 +131,150 @@ h1, h2, h3, h4, .serif { font-family: Georgia, 'Times New Roman', serif; }
 .accordion-button { font-weight: 600; color: var(--hp-ink); }
 .faq-src { font-size: 0.8rem; color: var(--hp-muted); margin-bottom: 0; }
 .faq-src a { color: var(--hp-olive); }
+.sol-box .btn { border-color: #DCCFB1; color: var(--hp-forest); }
+.sol-msg { font-size: 0.8rem; color: var(--hp-muted); margin-top: 0.25rem; }
 .hp-footer { color: var(--hp-muted); font-size: 0.8rem; text-align: center; margin-top: 0.5rem; }
+
+/* smoothness: Michigan help row keeps the ? right next to its label */
+.dpa-row .shiny-input-container { width: auto !important; margin-bottom: 0 !important; }
+.dpa-row .checkbox, .dpa-row .form-check { margin-bottom: 0 !important; }
+/* Ask strip: dog and title stay on one line, button moves under them if there is no room */
+.ask-strip > div { flex: 1 1 200px; min-width: 0; }
+.accordion-button:focus { z-index: 1; }
+
+/* tighter Your plan panel: less empty space so all inputs fit on a laptop screen */
+.bslib-sidebar-layout > .sidebar > .sidebar-content { gap: 0.6rem; padding: 0.9rem 1.1rem 1rem; }
+.bslib-sidebar-layout > .sidebar .sidebar-title {
+  font-size: 1.3rem; margin-bottom: 0; padding-bottom: 0.4rem; border-bottom: 1px solid var(--hp-line);
+}
+.bslib-sidebar-layout > .sidebar .shiny-input-container { margin-bottom: 0 !important; }
+.bslib-sidebar-layout > .sidebar .checkbox, .bslib-sidebar-layout > .sidebar .form-check { margin: 0; }
+.bslib-sidebar-layout > .sidebar .irs { margin-top: -0.25rem; }
+/* the ? sits right after the last word of the label, even when the label wraps */
+.label-row .help-q { vertical-align: 1px; margin-left: 3px; }
+/* no grey fade while the graph redraws, so dragging the slider looks smooth */
+#fan.recalculating, #result.recalculating, #cost.recalculating { opacity: 1 !important; }
+
+/* ---- welcome screen: a calm cover page; Start your plan hides it ---- */
+/* sizes use vh (screen height) so everything fits on one laptop screen without scrolling */
+.welcome {
+  position: fixed; inset: 0; z-index: 2000; overflow-y: auto; color: var(--hp-cream);
+  background:
+    radial-gradient(circle at 75% 35%, rgba(143, 163, 91, 0.35), transparent 55%),
+    linear-gradient(135deg, #1A2A1C 0%, #213323 55%, #2C4430 100%);
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+.welcome.has-photo {
+  background:
+    linear-gradient(0deg, rgba(16, 28, 18, 0.85) 0%, rgba(16, 28, 18, 0.35) 28%, rgba(16, 28, 18, 0) 50%),
+    linear-gradient(90deg, rgba(20, 33, 22, 0.82) 0%, rgba(20, 33, 22, 0.50) 35%, rgba(20, 33, 22, 0.08) 65%, rgba(20, 33, 22, 0.18) 100%),
+    var(--hero) center / cover no-repeat, #213323;
+}
+.welcome-hide { opacity: 0; transform: translateY(-14px); pointer-events: none; }
+.welcome-inner { max-width: 1240px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column;
+  padding: clamp(0.8rem, 3vh, 1.6rem) clamp(1rem, 4vw, 3rem); }
+.welcome-top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.welcome-brand { display: flex; align-items: center; gap: 0.6rem;
+  font-family: Georgia, 'Times New Roman', serif; font-size: 1.5rem; font-weight: 700; }
+.welcome-brand .mascot-crop { background: var(--hp-cream); border-radius: 12px; }
+.mascot-xs { height: 40px; width: 51px; }
+.mascot-xs img { height: 55px; width: 51px; }
+.welcome-top-btn { background: rgba(20, 33, 22, 0.45); color: var(--hp-cream); border: 1px solid rgba(244, 234, 213, 0.6);
+  border-radius: 999px; padding: 0.4rem 1.1rem; font-weight: 600; font-size: 0.9rem; }
+.welcome-top-btn:hover { background: var(--hp-cream); color: var(--hp-forest); }
+.welcome-main { flex: 1; display: flex; align-items: center; padding: clamp(0.5rem, 2vh, 1.5rem) 0; }
+.welcome-text { max-width: 640px; }
+.welcome-eyebrow { font-size: 0.8rem; letter-spacing: 0.3em; text-transform: uppercase; color: var(--hp-gold); }
+.welcome-title { font-family: Georgia, 'Times New Roman', serif; font-weight: 400; line-height: 1.04;
+  font-size: clamp(2.1rem, min(5.6vw, 9.5vh), 4.4rem); margin: clamp(0.3rem, 1.2vh, 0.7rem) 0 clamp(0.5rem, 2vh, 1rem);
+  color: #FFFCF5; text-shadow: 0 2px 18px rgba(0, 0, 0, 0.25); }
+.welcome-title em { font-style: italic; }
+.welcome-lead { font-size: clamp(0.95rem, 2.4vh, 1.15rem); line-height: 1.5; max-width: 470px; color: #EFE6D2;
+  margin-bottom: clamp(0.6rem, 2.2vh, 1.2rem); }
+.welcome-btn {
+  background: var(--hp-cream); color: var(--hp-forest); border: none;
+  border-radius: 999px; padding: clamp(0.6rem, 1.8vh, 0.85rem) 1.8rem; font-size: 1.05rem; font-weight: 700;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25); transition: transform 0.15s ease, background 0.15s ease;
+}
+.welcome-btn:hover { transform: translateY(-2px); background: #FFFFFF; }
+/* bottom of the cover: the 3 features as one row of dark glass tiles, so the house stays visible */
+.welcome-features { padding-bottom: clamp(0.2rem, 1vh, 0.6rem); }
+.features-label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; letter-spacing: 0.25em;
+  text-transform: uppercase; color: var(--hp-gold); margin-bottom: clamp(0.4rem, 1.2vh, 0.7rem); }
+.features-label svg { width: 16px; height: 16px; }
+.feature-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(0.6rem, 1.4vw, 1rem); }
+.feature-tile { display: flex; gap: 0.85rem; align-items: flex-start;
+  padding: clamp(0.7rem, 2vh, 1rem) 1.1rem; border-radius: 18px;
+  background: rgba(24, 40, 27, 0.62); border: 1px solid rgba(244, 234, 213, 0.18);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(14px) saturate(120%); backdrop-filter: blur(14px) saturate(120%);
+  transition: transform 0.2s ease, border-color 0.2s ease; }
+.feature-tile:hover { transform: translateY(-2px); border-color: rgba(183, 161, 113, 0.55); }
+/* older browsers without blur: a more solid green so the text is still easy to read */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .feature-tile { background: rgba(24, 40, 27, 0.90); }
+}
+.feature-icon { flex: 0 0 40px; height: 40px; border-radius: 12px; background: rgba(143, 163, 91, 0.22);
+  border: 1px solid rgba(143, 163, 91, 0.35); color: #D9E3B8;
+  display: flex; align-items: center; justify-content: center; }
+.feature-icon svg { width: 20px; height: 20px; }
+.feature-tile .ttl { font-family: Georgia, 'Times New Roman', serif; font-size: 1.05rem; color: #FFFCF5;
+  margin-bottom: 0.15rem; }
+.feature-tile .txt { font-size: 0.84rem; color: rgba(244, 234, 213, 0.82); line-height: 1.4; }
+/* narrow screens (tablet, phone): one column, cards under the button, scrolling is fine */
+@media (max-width: 860px) {
+  .feature-grid { grid-template-columns: 1fr; }
+  .welcome.has-photo { background:
+    linear-gradient(180deg, rgba(20, 33, 22, 0.55) 0%, rgba(20, 33, 22, 0.90) 50%),
+    var(--hero) 70% center / cover no-repeat, #213323; }
+}
+
+/* ---- phone screens (narrower than 576px) ---- */
+@media (max-width: 575.98px) {
+  /* inputs first, then results (on a laptop the inputs stay on the left) */
+  .bslib-sidebar-layout[data-collapsible-mobile='false'],
+  .bslib-sidebar-layout[data-bslib-sidebar-open='always'] {
+    display: flex !important; flex-direction: column;
+  }
+  .bslib-sidebar-layout[data-collapsible-mobile='false'] > .sidebar,
+  .bslib-sidebar-layout[data-bslib-sidebar-open='always'] > .sidebar {
+    order: -1; max-height: none !important; overflow: visible;
+    border-top: none !important; border-bottom: 1px solid var(--hp-line) !important;
+  }
+  /* 16px text in boxes stops the iPhone from zooming in when you tap a box */
+  .form-control, .form-select { font-size: 16px; }
+  /* smaller numbers and padding so the 3 tiles fit side by side */
+  .stat-row { gap: 0.4rem; }
+  .stat { padding: 0.6rem 0.25rem; }
+  .stat-label { font-size: 0.65rem; letter-spacing: 0.02em; }
+  .stat-value { font-size: 1.05rem; }
+  .card-body { padding: 1rem; }
+  .card-header { padding: 0.8rem 1rem; }
+  .hero-num { font-size: 2.1rem; }
+  .ask-strip .ask-sub { display: none; }
+  .welcome-title { font-size: 2.4rem; }
+  /* phone scrolling fix: no boxes with their own scroll area, the whole page scrolls like a normal web page */
+  html, body { height: auto !important; min-height: 100%; }
+  body.bslib-page-fill { display: block !important; }
+  .bslib-page-main, .bslib-sidebar-layout {
+    height: auto !important; max-height: none !important; flex: none !important; overflow: visible !important;
+  }
+  .bslib-sidebar-layout > .main, .bslib-sidebar-layout > .sidebar {
+    flex: none !important; height: auto !important; max-height: none !important; overflow: visible !important;
+  }
+  .welcome { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+}
 ")
 
 # dog mascot: the first picture found in the www folder (png, jpg or webp), cropped to the dog
 # if there is no picture, the app still runs and just shows no dog
-mascot_file <- list.files("www", pattern = "\\.(png|jpe?g|webp)$", ignore.case = TRUE)[1]
+pics <- list.files("www", pattern = "\\.(png|jpe?g|webp)$", ignore.case = TRUE)
+pics <- pics[!grepl("^hero", pics, ignore.case = TRUE)]   # hero.jpg is the welcome photo, not the dog
+mascot_file <- pics[1]
+# optional welcome photo: www/hero.jpg or www/hero.png (if missing, the welcome screen is plain green)
+hero_file <- c("hero.jpg", "hero.jpeg", "hero.png")
+hero_file <- hero_file[file.exists(file.path("www", hero_file))][1]
+has_hero  <- !is.na(hero_file)
 mascot <- function(size) {
   if (is.na(mascot_file)) return(NULL)
   tags$span(class = paste("mascot-crop", size),
@@ -151,7 +291,7 @@ help_icon <- function(title, text) {
 }
 
 label_row <- function(label, title, help) {
-  tags$div(class = "d-flex align-items-center gap-1 mb-1 fw-semibold",
+  tags$div(class = "label-row mb-1 fw-semibold",
            tags$span(label), help_icon(title, help))
 }
 
@@ -160,7 +300,7 @@ money_input <- function(id, label, title, help, value) {
     label_row(label, title, help),
     tags$div(class = "input-group",
              tags$span(class = "input-group-text", "$"),
-             tags$input(id = id, type = "number", class = "form-control",
+             tags$input(id = id, type = "number", class = "form-control", inputmode = "decimal",
                         value = value, min = 0)
     )
   )
@@ -186,12 +326,130 @@ document.addEventListener('click', function(e) {
 
 dollars <- function(x) paste0("$", formatC(round(x), format = "d", big.mark = ","))
 
+# live slider: while you drag "Money in index fund", send the newest value to R as input$w_live.
+# If R is still busy drawing, keep only the newest value and send it when R is free,
+# so the graph never falls behind.
+live_slider_js <- tags$script(HTML("
+$(function() {
+  var busy = false, pending = null;
+  $(document).on('shiny:busy', function() { busy = true; });
+  $(document).on('shiny:idle', function() {
+    busy = false;
+    if (pending !== null) { Shiny.setInputValue('w_live', pending); pending = null; }
+  });
+  $(document).on('change', '#w', function() {
+    var v = parseFloat(this.value);
+    if (isNaN(v)) return;
+    if (busy) { pending = v; } else { Shiny.setInputValue('w_live', v); }
+  });
+});"))
+
+# ---- Solana: read a wallet's USDC balance from the public Solana network ----
+# Read only: no wallet connection, no keys, no transactions. USDC is a dollar token (1 USDC = $1).
+# two free public Solana mainnet endpoints: if the first is busy, we try the second
+sol_rpcs  <- c("https://api.mainnet-beta.solana.com", "https://solana-rpc.publicnode.com")
+usdc_mint <- "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"   # the official USDC token on Solana
+sol_ask <- function(url, body) {
+  h <- new_handle()
+  handle_setopt(h, post = TRUE, postfields = body, timeout = 8, connecttimeout = 5)
+  handle_setheaders(h, "Content-Type" = "application/json")
+  res <- curl_fetch_memory(url, handle = h)
+  if (res$status_code != 200) stop("busy (", res$status_code, ")")
+  fromJSON(rawToChar(res$content), simplifyVector = FALSE)
+}
+# returns the USDC amount, or stops with a short reason
+sol_usdc_balance <- function(address) {
+  body <- toJSON(list(jsonrpc = "2.0", id = 1, method = "getTokenAccountsByOwner",
+                      params = list(address, list(mint = usdc_mint), list(encoding = "jsonParsed"))),
+                 auto_unbox = TRUE)
+  out <- NULL
+  for (u in sol_rpcs) {
+    out <- tryCatch(sol_ask(u, body), error = function(e) NULL)
+    if (!is.null(out)) break
+  }
+  if (is.null(out)) stop("network")
+  if (!is.null(out$error)) stop("address")
+  accts <- out$result$value
+  if (length(accts) == 0) return(0)
+  sum(vapply(accts, function(a) {
+    amt <- a$account$data$parsed$info$tokenAmount
+    x <- suppressWarnings(as.numeric(if (!is.null(amt$uiAmountString)) amt$uiAmountString else amt$uiAmount))
+    if (length(x) == 1 && !is.na(x)) x else 0
+  }, numeric(1)))
+}
+
+# ---- welcome screen: shown first, covers the app; the button hides it ----
+# simple line icons (inline SVG drawings, no extra files)
+svg_icon <- function(...) {
+  tag("svg", list(viewBox = "0 0 24 24", fill = "none", stroke = "currentColor",
+                  "stroke-width" = "1.8", "stroke-linecap" = "round", "stroke-linejoin" = "round", ...))
+}
+ln  <- function(d) tag("path", list(d = d))                                   # one line
+dot <- function(x, y, r = 1.3) tag("circle", list(cx = x, cy = y, r = r, fill = "currentColor"))
+icon_house <- svg_icon(ln("M3 11l9-7 9 7"), ln("M5 10v10h14V10"), ln("M10 20v-6h4v6"))
+icon_chart <- svg_icon(ln("M3 3v18h18"), ln("M7 15l4-4 3 3 5-6"))
+icon_dice  <- svg_icon(tag("rect", list(x = 3, y = 3, width = 18, height = 18, rx = 4)),
+                       dot(8, 8), dot(16, 8), dot(12, 12), dot(8, 16), dot(16, 16))
+icon_help  <- svg_icon(tag("circle", list(cx = 12, cy = 12, r = 9)),
+                       ln("M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.5"),
+                       dot(12, 17, 0.7))
+
+# one feature tile: icon on the left, title and one short line on the right
+feature_row <- function(icon, title, text) {
+  tags$div(class = "feature-tile",
+           tags$div(class = "feature-icon", icon),
+           tags$div(tags$div(class = "ttl", title),
+                    tags$div(class = "txt", text)))
+}
+
+welcome <- tags$div(
+  id = "welcome", class = if (has_hero) "welcome has-photo" else "welcome",
+  style = if (has_hero) paste0("--hero: url('", hero_file, "');"),
+  tags$div(class = "welcome-inner",
+           tags$div(class = "welcome-top",
+                    tags$div(class = "welcome-brand", mascot("mascot-xs"), "HomePath"),
+                    tags$button(type = "button", class = "welcome-top-btn", onclick = "hpStart()",
+                                HTML("Get started &rarr;"))),
+           tags$div(class = "welcome-main",
+                    # headline and the button, on the left over the photo
+                    tags$div(class = "welcome-text",
+                             tags$div(class = "welcome-eyebrow", "Plan \u00b7 Save \u00b7 Invest"),
+                             tags$h1(class = "welcome-title", "Your Path to", tags$br(), tags$em("Homeownership")),
+                             tags$p(class = "welcome-lead",
+                                    "See when you could afford the down payment on your first home in Michigan, with real market data and honest odds."),
+                             tags$button(type = "button", class = "welcome-btn", onclick = "hpStart()",
+                                         HTML("Start your plan &rarr;"))
+                    )
+           ),
+           # bottom: the 3 things HomePath really does, as 3 dark glass tiles in one row
+           tags$div(class = "welcome-features",
+                    tags$div(class = "features-label", icon_house, "What HomePath does"),
+                    tags$div(class = "feature-grid",
+                             feature_row(icon_chart, "Real market data",
+                                         "S&P 500 returns from Robert Shiller's data, 1950 to today."),
+                             feature_row(icon_dice, "2,000 possible futures",
+                                         "We simulate the market 2,000 times and show unlucky, typical and lucky."),
+                             feature_row(icon_help, "Every term explained",
+                                         "Tap any ? to see what it means and where the number comes from.")
+                    )
+           )
+  )
+)
+
+# the button fades the welcome screen out, then removes it
+welcome_js <- tags$script(HTML("
+function hpStart() {
+  var w = document.getElementById('welcome');
+  w.classList.add('welcome-hide');
+  setTimeout(function() { w.style.display = 'none'; }, 450);
+}"))
+
 # ---- FAQ: Briana's answers (static text, no AI) ----
 # one question: click to open, answer + source underneath
 faq_item <- function(q, a, src, url = NULL) {
   accordion_panel(
     q,
-    tags$p(a),
+    if (is.character(a)) tags$p(a) else a,   # plain text, or a list of steps
     tags$p(class = "faq-src", "Source: ", src,
            if (!is.null(url)) tags$span(" (", tags$a(href = url, target = "_blank",
                                                      sub("https://(www\\.)?", "", url)), ")"))
@@ -228,8 +486,35 @@ faq_buying <- accordion(
            "CFPB, 2026", cfpb)
 )
 
+# the math in plain English, step by step (matches functions.R)
+math_steps <- tags$ol(style = "padding-left: 1.2rem; display: grid; gap: 0.45rem;",
+                      tags$li(tags$b("Your goal. "),
+                              "Home price times your down payment %. If you tick Michigan down payment help, we subtract $10,000."),
+                      tags$li(tags$b("One month. "),
+                              "Your money grows for one month, then your monthly savings are added. ",
+                              "The index fund part grows like the S&P 500: about 8.3% a year on average after inflation, ",
+                              "with ups and downs of about 12.2% a year [data: Robert Shiller, 1950 to today]. ",
+                              "The savings account part earns 1% a year [assumption]."),
+                      tags$li(tags$b("Luck. "),
+                              "Each month the market move is random, drawn from a bell curve. ",
+                              "This is the standard stock price model (geometric Brownian motion)."),
+                      tags$li(tags$b("2,000 futures. "),
+                              "We repeat this month by month for up to 15 years, 2,000 times [choice]. ",
+                              "Each run is one possible future."),
+                      tags$li(tags$b("Reaching the goal. "),
+                              "Every month we ask: if you sold now and paid 15% tax on the gains [assumption], ",
+                              "would you have enough? The first month the answer is yes is when that future reaches your goal."),
+                      tags$li(tags$b("Your date. "),
+                              "We show the first month when your chosen share of futures (for example 80%) have reached the goal. ",
+                              "Unlucky, typical and lucky are what the bottom 10%, middle and top 10% of futures have that month.")
+)
+
 faq_homepath <- accordion(
   open = FALSE,
+  faq_item("How does HomePath calculate my date?",
+           tagList(math_steps,
+                   tags$p("The monthly payment is separate: a standard 30-year loan payment plus tax, insurance and PMI. It does not change your date.")),
+           "HomePath model; S&P 500 data from Robert Shiller"),
   faq_item("Savings account or index fund: what's the difference?",
            "Savings accounts are generally designed for stability and easier access to funds. Index funds may experience higher growth or losses over time because their value can increase or decrease.",
            "Investor.gov, 2026", invst),
@@ -264,9 +549,10 @@ ui <- page_sidebar(
     "input-bg" = "#FFFFFF", "border-radius" = "0.75rem"
   ),
   tags$head(tags$style(app_css)),
+  welcome,
   sidebar = sidebar(
     title = "Your plan",
-    width = 300,
+    width = 340,
     money_input("pay", "Monthly take-home pay", "Take-home pay",
                 "The money that lands in your bank account each month, after taxes and deductions.",
                 value = 2500),
@@ -277,6 +563,21 @@ ui <- page_sidebar(
     money_input("start", "Savings today", "Savings today",
                 "Money you already have set aside for a home.",
                 value = 2000),
+    # optional: add the USDC (digital dollars) in a Solana wallet to Savings today
+    tags$div(class = "sol-box",
+             label_row("Savings on Solana (optional)", "Savings on Solana",
+                       "Paste a Solana wallet address. HomePath reads its USDC balance live from the public Solana blockchain (read only, no login, no keys) and adds it to Savings today. USDC is a digital dollar: 1 USDC = $1."),
+             tags$div(class = "input-group",
+                      tags$input(id = "sol_addr", type = "text", class = "form-control",
+                                 placeholder = "Solana wallet address", autocomplete = "off"),
+                      actionButton("sol_go", "Check", class = "btn btn-outline-secondary")),
+             uiOutput("sol_msg"),
+             # link to the Down Payment Jar page (Breez SDK, JavaScript, lives in www/jar)
+             tags$a(href = "jar/index.html", target = "_blank",
+                    class = "btn btn-outline-secondary btn-sm",
+                    style = "margin-top:8px; width:100%;",
+                    "Open my Down Payment Jar (Breez, test network)")
+    ),
     money_input("price", "Home price", "Home price",
                 "Starts at the Michigan median sale price, $289,069 (Redfin). Change it to the home you want.",
                 value = 289069),
@@ -294,7 +595,7 @@ ui <- page_sidebar(
                   choices = c("5%" = 0.05, "6%" = 0.06,
                               "7.11% (average now)" = 0.0711, "8%" = 0.08))
     ),
-    tags$div(class = "d-flex align-items-center gap-1",
+    tags$div(class = "dpa-row d-flex align-items-center gap-1",
              checkboxInput("dpa", "Michigan down payment help", value = FALSE),
              help_icon("MI 10K DPA",
                        "Michigan's MSHDA program gives up to $10,000 toward your down payment. You must meet income and price limits and use a participating lender.")
@@ -340,7 +641,9 @@ ui <- page_sidebar(
   ),
   tags$p(class = "hp-footer",
          "An estimate, not a promise. Not financial advice. Market data: Robert Shiller S&P 500, 1950-2026."),
-  close_help_js
+  close_help_js,
+  live_slider_js,
+  welcome_js
 )
 
 server <- function(input, output, session) {
@@ -356,18 +659,49 @@ server <- function(input, output, session) {
     }
   })
   
+  # index fund share: follows the slider while you drag (w_live) and when you let go (w).
+  # reactiveVal only updates when the number really changes, so no extra redraws.
+  w_now <- reactiveVal(60)
+  observeEvent(input$w, w_now(input$w))
+  observeEvent(input$w_live, w_now(input$w_live))
+  
+  # Solana: USDC found in the wallet (0 until the user checks a wallet)
+  sol_usdc <- reactiveVal(0)
+  sol_note <- reactiveVal(NULL)
+  observeEvent(input$sol_go, {
+    addr <- trimws(if (is.null(input$sol_addr)) "" else input$sol_addr)
+    if (addr == "") { sol_usdc(0); sol_note(NULL); return() }
+    if (!grepl("^[1-9A-HJ-NP-Za-km-z]{32,44}$", addr)) {
+      sol_usdc(0); sol_note("That does not look like a Solana address."); return()
+    }
+    bal <- tryCatch(sol_usdc_balance(addr), error = function(e) conditionMessage(e))
+    if (identical(bal, "address")) {
+      sol_usdc(0); sol_note("Solana did not accept that address. Check it and try again.")
+    } else if (!is.numeric(bal)) {
+      sol_usdc(0); sol_note("Could not reach Solana right now. Try again in a moment.")
+    } else {
+      sol_usdc(bal)
+      sol_note(paste0("Found ", format(round(bal, 2), nsmall = 2, big.mark = ","),
+                      " USDC, added to Savings today [data: read live from the Solana blockchain]."))
+    }
+  })
+  output$sol_msg <- renderUI(if (!is.null(sol_note())) tags$div(class = "sol-msg", sol_note()))
+  start_total <- reactive(input$start + sol_usdc())   # Savings today + USDC on Solana
+  
   down_amt <- reactive(input$price * as.numeric(input$down))
   goal <- reactive(max(down_amt() - if (isTRUE(input$dpa)) 10000 else 0, 0))
   
-  sim <- reactive({
+  # bindCache: R remembers each result it already computed (same inputs = same answer,
+  # because the seed is fixed), so dragging back over a value is instant
+  sim <- bindCache(reactive({
     req(input$save, input$start, input$price)
     set.seed(1)
-    months_to_goal(input$start, input$save, goal(), input$w / 100,
+    months_to_goal(start_total(), input$save, goal(), w_now() / 100,
                    params$mu, params$sigma, target = as.numeric(input$sure))
-  })
+  }), start_total(), input$save, goal(), w_now(), input$sure)
   
   output$result <- renderUI({
-    if (input$start >= goal()) {
+    if (start_total() >= goal()) {
       return(tags$div(
         tags$h1("You're ready now!", class = "hero-num"),
         tags$p(class = "mt-2", paste0("Your savings already cover the ", dollars(goal()), " you need."))
@@ -413,11 +747,12 @@ server <- function(input, output, session) {
     )
   })
   
-  output$fan <- renderPlot({
+  # the graph is also cached: a picture already drawn for these inputs is shown right away
+  output$fan <- bindCache(renderPlot({
     s <- sim()
     n <- if (is.na(s$months)) nrow(s$bands) else min(s$months + 24, nrow(s$bands))
     s$bands <- s$bands[1:n, , drop = FALSE]
-    s$paths <- s$paths[1:n, , drop = FALSE]
+    s$paths <- s$paths[1:n, 1:min(20, ncol(s$paths)), drop = FALSE]   # 20 faint lines: lighter to draw
     t <- (1:n) / 12
     bands <- data.frame(t = t, lo = s$bands[, 1], mid = s$bands[, 2], hi = s$bands[, 3])
     paths <- data.frame(t = rep(t, ncol(s$paths)),
@@ -447,7 +782,7 @@ server <- function(input, output, session) {
     m <- s$months
     if (!is.na(m)) p <- p + geom_vline(xintercept = m / 12, colour = col_olive, linetype = "dotted", linewidth = 0.7)
     p
-  }, res = 96)
+  }, res = 96), start_total(), input$save, goal(), w_now(), input$sure)
   
   output$cost <- renderUI({
     down <- as.numeric(input$down)

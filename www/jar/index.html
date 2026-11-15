@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HomePath Down Payment Jar</title>
+    <script type="module" crossorigin src="./assets/index-g52yueSs.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-D9Vo8sJE.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>HomePath Down Payment Jar</h1>
+        <p class="sub">
+          A self-custodial savings jar for your first home.
+          <span id="network-badge" class="badge"></span>
+        </p>
+      </header>
+
+      <p id="status" class="status" role="status">Loading…</p>
+
+      <!-- Screen 1: no wallet on this device yet -->
+      <section id="setup" class="card" hidden>
+        <h2>Start your jar</h2>
+        <button id="create-btn" class="primary">Create a new jar</button>
+        <p class="or">or restore one you already have</p>
+        <textarea id="restore-input" rows="3" placeholder="Type your 12-word recovery phrase"></textarea>
+        <button id="restore-btn">Restore jar</button>
+      </section>
+
+      <!-- Screen 2: the jar -->
+      <div id="jar" hidden>
+        <section class="card">
+          <h2>Jar balance</h2>
+          <p class="balance"><span id="balance-sats">0</span> <small>sats</small></p>
+          <p id="balance-usd" class="muted"></p>
+
+          <label for="goal-input">Down payment goal (USD)</label>
+          <input id="goal-input" type="number" min="1" step="100" inputmode="decimal" placeholder="e.g. 15000" />
+          <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="bar">
+            <div id="bar-fill"></div>
+          </div>
+          <p id="progress-text" class="muted">Type a goal to see your progress.</p>
+        </section>
+
+        <section class="card">
+          <h2>Add money to the jar</h2>
+          <div class="tabs" role="tablist">
+            <button data-kind="lightning" role="tab">Lightning</button>
+            <button data-kind="bitcoin" role="tab">Bitcoin</button>
+            <button data-kind="spark" role="tab">Spark</button>
+          </div>
+
+          <div id="lightning-form" hidden>
+            <label for="amount-input">Amount (sats)</label>
+            <div class="row">
+              <input id="amount-input" type="number" min="1" step="1" value="1000" inputmode="numeric" />
+              <button id="invoice-btn" class="primary">Create invoice</button>
+            </div>
+          </div>
+
+          <p id="receive-hint" class="muted"></p>
+          <canvas id="qr" hidden></canvas>
+          <p id="request-text" class="mono" hidden></p>
+          <button id="copy-btn" hidden>Copy</button>
+        </section>
+
+        <section class="card">
+          <details>
+            <summary>Recovery phrase (keep it secret)</summary>
+            <p class="muted">These 12 words are the jar. Anyone who has them can take the money. Write them down.</p>
+            <p id="mnemonic-text" class="mono"></p>
+          </details>
+          <button id="forget-btn" class="danger">Remove jar from this browser</button>
+        </section>
+      </div>
+
+      <footer>
+        <a href="https://homepathmi.com" target="_blank" rel="noopener">← Back to HomePath (homepathmi.com)</a>
+        <p class="muted">Hackathon demo built with the Breez SDK. Use test or tiny amounts only.</p>
+      </footer>
+    </main>
+  </body>
+</html>
