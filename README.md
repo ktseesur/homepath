@@ -25,4 +25,8 @@ Freddie Mac (mortgage rates), Tax Foundation (property taxes), HUD, and Shiller 
 2. In R: `shiny::runApp()`
 
 ## Credits
-Built by Khongorzul Tseesuren (team lead and developer) with teammates Alyssa Dmello, Yunha Lee, and Brianna Biggs at Hack The Nest. Model guidance from Professor Ovidiu Calin (EMU Mathematics).
+Code and model by Khongorzul Tseesuren.
+
+Hack The Nest teammates: Alyssa Dmello (finance assumptions and research), Yunha Lee (design and branding), and Brianna Biggs (presentation).
+
+Model guidance from Professor Ovidiu Calin (EMU Mathematics).
